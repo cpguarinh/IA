@@ -198,18 +198,33 @@ def generar_respuesta_rag(pregunta, matches, historial, modelo, temp):
         f"PREGUNTA DEL USUARIO:\n{pregunta}"
     )
 
-    t0 = time.time()
-    resp = gclient.models.generate_content(
-        model=modelo,
-        contents=prompt,
-        config=types.GenerateContentConfig(
-            system_instruction=SYSTEM_PROMPT,
-            temperature=temp,
-            top_p=0.85,
-            max_output_tokens=1024,
-        )
-    )
-    return resp.text, (time.time() - t0) * 1000
+    # Reintentos ante saturación y modelos de respaldo
+    candidatos = [modelo] + [m for m in modelos_llm if m != modelo][:2]
+    for mod in candidatos:
+        for intento in range(3):
+            try:
+                t0 = time.time()
+                resp = gclient.models.generate_content(
+                    model=mod,
+                    contents=prompt,
+                    config=types.GenerateContentConfig(
+                        system_instruction=SYSTEM_PROMPT,
+                        temperature=temp,
+                        top_p=0.85,
+                        max_output_tokens=1024,
+                    )
+                )
+                texto = resp.text or ""
+                if mod != modelo:
+                    texto = f"_ℹ️ Respuesta generada con el modelo de respaldo **{mod}**._\n\n" + texto
+                return texto, (time.time() - t0) * 1000
+            except Exception as e:
+                if getattr(e, "code", None) in (429, 500, 502, 503, 504):
+                    time.sleep(3 * (intento + 1))   # saturación temporal: esperar y reintentar
+                else:
+                    break                            # otro error: pasar al siguiente modelo
+    return ("⚠️ El servicio de Gemini no respondió en este momento. "
+            "Intenta de nuevo en unos segundos o selecciona otro modelo en la barra lateral."), 0.0
 
 st.title("🎓 Sistema RAG de Orientación Académica y Permanencia Estudiantil")
 st.markdown("**Colegio Integrado Horizonte** · Base Vectorial Serverless (**Pinecone**) + **Google Gemini API** + **Streamlit**")
