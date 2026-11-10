@@ -1,0 +1,6 @@
+# Credenciales: nunca subir al repositorio
+.env
+env.txt
+.streamlit/secrets.toml
+__pycache__/
+.ipynb_checkpoints/
